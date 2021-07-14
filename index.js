@@ -61,33 +61,28 @@ client.on('message', message => {
     const logMessage = `Command Sent in #${message.channel.name}. ChannelId: ${channel.id}`;
     console.log(logMessage);
 
-    // if (command === 'update-port') {
-    //     if (!args.length) {
-    //         return message.channel.send(`You didn't provide any arguments, ${message.author}!`);
-    //     }
-    //     else if (args.length > 1) {
-    //         return message.channel.send('You cannot send more than one argument to update the port');
-    //     }
-    //     else {
-    //         cportName = args[0].toString().toUpperCase();
-    //         try {
-    //             updateSerialPort();
-    //             message.channel.send(`Updated serialport path to: ${args[0].toString()}`);
-    //         }
-    //         catch {
-    //             const errmsg = 'Something went wrong updating the port. Check portname and try again.';
-    //             console.log(errmsg);
-    //             message.channel.send(errmsg);
-    //         }
-    //     }
-    // }
+    if (command === 'disconnect') {
+        peripheral.disconnect();
+    }
+
+    if (command === 'tryreconnect') {
+        if (peripheral !== undefined && peripheral !== null) {
+            peripheral.disconnect();
+        }
+        async () => {
+            // handle registered in the registerBLEHandlers should still work here?
+            await noble.startScanningAsync([config.uuids.peripheral], false);
+        };
+    }
 
     if (command === 'spoof') {
         if (!args.length || args.length > 1) {
             return message.channel.send('One and only one argument is required.');
         }
         else {
-            sendSerialmessage(args[0], message);
+            const channelname = args[0];
+            const setValue = config.channels.find(c => c.name == channelname).setVal;
+            sendSerialmessage(setValue, message);
         }
     }
 
@@ -116,7 +111,7 @@ client.on('message', message => {
 
 });
 
-function sendSerialmessage(serialMessage, discMessage) {
+const sendSerialmessage = (serialMessage, discMessage) => {
     const result = isBLEValid();
     if (result !== true) {
         discMessage.channel.send(result);
@@ -125,16 +120,16 @@ function sendSerialmessage(serialMessage, discMessage) {
     const msg = convertStringToBtyes(serialMessage);
     rxCharacteristic.write(msg);
     console.log('wrote message to rxCharacteristic.');
-}
+};
 
-function convertStringToBtyes(input) {
+const convertStringToBtyes = (input) => {
     const myBuffer = [];
     const buffer = Buffer.from(input, 'utf-8');
     for (let i = 0; i < buffer.length; i++) {
         myBuffer.push(buffer[i]);
     }
     return myBuffer;
-}
+};
 
 const isBLEValid = () => {
     let errorMsg;
