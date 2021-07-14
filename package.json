@@ -1,0 +1,33 @@
+{
+  "name": "ddnotify",
+  "version": "1.0.0",
+  "description": "Lights up an LED whenever I receive a notification on discord",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github.com/lukasparsons/DDNotify"
+  },
+  "keywords": [
+    "notification",
+    "notify",
+    "led",
+    "rgb",
+    "light",
+    "discord"
+  ],
+  "author": "Lukas Parsons",
+  "license": "ISC",
+  "dependencies": {
+    "@abandonware/noble": "^1.9.2-14",
+    "discord.js": "^12.5.3",
+    "dotenv": "^10.0.0",
+    "serialport": "^9.2.0",
+    "ws": "^7.5.2"
+  },
+  "devDependencies": {
+    "eslint": "^7.30.0"
+  }
+}
