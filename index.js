@@ -11,26 +11,29 @@ let services;
 let characteristics;
 
 client.once('ready', () => {
-    registerBLEHandlers();
     console.log('Ready!');
+    registerBLEHandlers();
 });
 
 const registerBLEHandlers = () => {
     noble.on('stateChange', async (state) => {
         if (state === 'poweredOn') {
+            console.log('scanning...');
             await noble.startScanningAsync([config.uuids.peripheral], false);
         }
     });
 
     noble.on('discover', async (periph) => {
+        console.log('discovered!');
         await noble.stopScanningAsync();
+        console.log('connecting...');
         await periph.connectAsync();
         await periph.discoverSomeServicesAndCharacteristicsAsync([], []).then((sandc => {
             peripheral = periph;
             services = sandc.services;
             characteristics = sandc.characteristics;
             uartService = sandc.services.find(s => s.name == 'uart');
-            rxCharacteristic = sandc.characteristics.find(c => c.name == 'Rx');
+            rxCharacteristic = uartService.characteristics.find(c => c.name == 'Rx');
             console.log('services: ', services);
             console.log('characteristics: ', characteristics);
 
