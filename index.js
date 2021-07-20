@@ -10,12 +10,13 @@ let uartService;
 let manuallyDisconnected = false;
 
 client.once('ready', () => {
-    registerBLEHandlers();
     console.log('Ready!');
+    registerBLEHandlers();
 });
 const registerBLEHandlers = () => {
     noble.on('stateChange', async (state) => {
         if (state === 'poweredOn') {
+<<<<<<< HEAD
             console.log('Starting Scan...');
             noble.startScanning([config.uuids.uart], false, (error) => {
                 if (error) {
@@ -34,10 +35,15 @@ const registerBLEHandlers = () => {
                 }
             });
 
+=======
+            console.log('scanning...');
+            await noble.startScanningAsync([config.uuids.peripheral], false);
+>>>>>>> d526412d7f2c9829b32cc08a09a8cdea43fcd270
         }
     });
 };
 
+<<<<<<< HEAD
 const setupPeriphHandler = () => {
     peripheral.once('connect', () => {
         console.log('connected!');
@@ -78,6 +84,25 @@ const handleCharacteristics = () => {
         else {
             console.log('rxCharacteristic was undefined... :(');
         }
+=======
+    noble.on('discover', async (periph) => {
+        console.log('discovered!');
+        await noble.stopScanningAsync();
+        console.log('connecting...');
+        await periph.connectAsync();
+        await periph.discoverSomeServicesAndCharacteristicsAsync([], []).then((sandc => {
+            peripheral = periph;
+            services = sandc.services;
+            characteristics = sandc.characteristics;
+            uartService = sandc.services.find(s => s.name == 'uart');
+            rxCharacteristic = uartService.characteristics.find(c => c.name == 'Rx');
+            console.log('services: ', services);
+            console.log('characteristics: ', characteristics);
+
+            console.log('uartService: ', uartService);
+            console.log('rxCharacteristic: ', rxCharacteristic);
+        }));
+>>>>>>> d526412d7f2c9829b32cc08a09a8cdea43fcd270
     });
 };
 
