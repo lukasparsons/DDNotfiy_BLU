@@ -1,42 +1,83 @@
 const config = require('./config.json');
 const discord = require('discord.js');
-const noble = require('@abandonware/noble');
+const noble = require('noble-winrt');
 
 const client = new discord.Client();
 const withoutResponse = true;
 let peripheral;
 let rxCharacteristic;
 let uartService;
-let services;
-let characteristics;
+let manuallyDisconnected = false;
 
 client.once('ready', () => {
     registerBLEHandlers();
     console.log('Ready!');
 });
-
 const registerBLEHandlers = () => {
     noble.on('stateChange', async (state) => {
         if (state === 'poweredOn') {
-            await noble.startScanningAsync([config.uuids.peripheral], false);
+            console.log('Starting Scan...');
+            noble.startScanning([config.uuids.uart], false, (error) => {
+                if (error) {
+                    console.log(error);
+                }
+            });
+
+            noble.on('discover', (periph) => {
+                console.log('Peripheral Found!');
+                if (periph.advertisement.serviceUuids.includes(config.uuids.uart)) {
+                    console.log(periph);
+                    peripheral = periph;
+                    peripheral.connect();
+                    noble.stopScanning();
+                    setupPeriphHandler();
+                }
+            });
+
         }
     });
+};
 
-    noble.on('discover', async (periph) => {
-        await noble.stopScanningAsync();
-        await periph.connectAsync();
-        await periph.discoverSomeServicesAndCharacteristicsAsync([], []).then((sandc => {
-            peripheral = periph;
-            services = sandc.services;
-            characteristics = sandc.characteristics;
-            uartService = sandc.services.find(s => s.name == 'uart');
-            rxCharacteristic = sandc.characteristics.find(c => c.name == 'Rx');
-            console.log('services: ', services);
-            console.log('characteristics: ', characteristics);
+const setupPeriphHandler = () => {
+    peripheral.once('connect', () => {
+        console.log('connected!');
+        peripheral.connected = true;
+        peripheral.discoverServices([config.uuids.uart]);
+        peripheral.once('servicesDiscover', (pServices) => {
+            console.log('discovered services');
+            const serv = pServices.find(x => x.uuid == config.uuids.uart);
+            if (serv !== undefined) {
+                console.log('set uart service');
+                uartService = serv;
+                handleCharacteristics();
+                uartService.discoverCharacteristics([config.uuids.uart]);
+            }
+            else {
+                console.log('serv undefined...');
+            }
+        });
+    });
 
-            console.log('uartService: ', uartService);
-            console.log('rxCharacteristic: ', rxCharacteristic);
-        }));
+    peripheral.once('disconnect', () => {
+        if (!manuallyDisconnected) {
+            console.log('disconnected...');
+        }
+    });
+};
+
+const handleCharacteristics = () => {
+    uartService.once('characteristicsDiscover', (chars) => {
+        console.log('discovered characteristics');
+        const rxChar = chars.find(x => x.properties.includes('write'));
+        if (rxChar !== undefined) {
+            rxCharacteristic = rxChar;
+            console.log('set rxCharacteristic');
+            const msg = convertStringToBuffer('test-channel');
+            rxChar.write(msg, withoutResponse);
+        }
+        else {
+            console.log('rxCharacteristic was undefined... :(');
+        }
     });
 };
 
@@ -44,7 +85,7 @@ client.on('message', message => {
     if (!message.content.startsWith(config.prefix)) {
         const role = message.member.roles.cache.find(r => r.name == 'Players');
         if (role !== undefined || message.channel.name == 'test-channel') {
-            const msg = convertStringToBtyes(message.channel.name);
+            const msg = convertStringToBuffer(message.channel.name);
             rxCharacteristic.write(msg, withoutResponse);
             console.log(`Message sent in ${message.channel.name}. Wrote message to serialport.`);
         }
@@ -71,7 +112,7 @@ client.on('message', message => {
         }
         async () => {
             // handle registered in the registerBLEHandlers should still work here?
-            await noble.startScanningAsync([config.uuids.peripheral], false);
+            await noble.startScanning([config.uuids.uart], false);
         };
     }
 
@@ -92,10 +133,6 @@ client.on('message', message => {
         console.log('rxCharacteristic: ', rxCharacteristic);
         if (rxCharacteristic !== undefined && rxCharacteristic !== null) {
             message.channel.send('Peripheral Connected!');
-            const periphMsg = 'peripheral: ' + JSON.stringify(peripheral);
-            const serviceMsg = 'uartService: ' + JSON.stringify(uartService);
-            const rxCharacteristicMsg = 'rxCharacteristic: ' + JSON.stringify(rxCharacteristic);
-            message.channel.send(periphMsg + ' ' + serviceMsg + ' ' + rxCharacteristicMsg);
         }
     }
 
@@ -105,7 +142,7 @@ client.on('message', message => {
             message.channel.send(result);
             return;
         }
-        const msg = convertStringToBtyes('Test Message');
+        const msg = convertStringToBuffer('Test Message');
         sendSerialmessage(msg, message);
     }
 
@@ -117,18 +154,13 @@ const sendSerialmessage = (serialMessage, discMessage) => {
         discMessage.channel.send(result);
         return;
     }
-    const msg = convertStringToBtyes(serialMessage);
+    const msg = convertStringToBuffer(serialMessage);
     rxCharacteristic.write(msg);
     console.log('wrote message to rxCharacteristic.');
 };
 
-const convertStringToBtyes = (input) => {
-    const myBuffer = [];
-    const buffer = Buffer.from(input, 'utf-8');
-    for (let i = 0; i < buffer.length; i++) {
-        myBuffer.push(buffer[i]);
-    }
-    return myBuffer;
+const convertStringToBuffer = (input) => {
+    return Buffer.from(input, 'utf-8');
 };
 
 const isBLEValid = () => {
