@@ -1,6 +1,6 @@
 const config = require('./config.json');
 const discord = require('discord.js');
-const noble = require('noble-winrt');
+const noble = require('@abandonware/noble');
 
 const client = new discord.Client();
 const withoutResponse = true;
@@ -17,20 +17,21 @@ const registerBLEHandlers = () => {
     noble.on('stateChange', async (state) => {
         if (state === 'poweredOn') {
             console.log('Starting Scan...');
-            noble.startScanning([config.uuids.uart], false, (error) => {
-                if (error) {
-                    console.log(error);
-                }
-            });
+            await noble.startScanningAsync([config.uuids.uart], false);
 
             noble.on('discover', (periph) => {
                 console.log('Peripheral Found!');
                 if (periph.advertisement.serviceUuids.includes(config.uuids.uart)) {
+                    noble.stopScanning();
                     console.log(periph);
                     peripheral = periph;
-                    peripheral.connect();
-                    noble.stopScanning();
-                    setupPeriphHandler();
+
+                    
+
+                    peripheral.connectAsync().then(() => {
+                        setupPeriphHandler();
+                    });
+                    
                 }
             });
 
@@ -38,53 +39,49 @@ const registerBLEHandlers = () => {
     });
 };
 
-const setupPeriphHandler = () => {
-    peripheral.once('connect', () => {
+const setupPeriphHandler = async () => {
         console.log('connected!');
         peripheral.connected = true;
-        peripheral.discoverServices([config.uuids.uart]);
-        peripheral.once('servicesDiscover', (pServices) => {
+        peripheral.once('disconnect', () => {
+            if (!manuallyDisconnected) {
+                console.log('disconnected...')
+                if (config.autoreconnect == 'true') {
+                    console.log('trying to reconnect...')
+                    noble.startScanningAsync([config.uuids.uart], false);
+                }
+                else {
+                    console.log('use command "reset" to try to reconnect.');
+                }
+            }
+        });
+        peripheral.discoverServicesAsync([config.uuids.uart]).then((services) => {
             console.log('discovered services');
-            const serv = pServices.find(x => x.uuid == config.uuids.uart);
+            const serv = services.find(x => x.uuid == config.uuids.uart);
             if (serv !== undefined) {
                 console.log('set uart service');
                 uartService = serv;
-                handleCharacteristics();
-                uartService.discoverCharacteristics([config.uuids.uart]);
+                serv.discoverCharacteristicsAsync().then((chars) => {
+                    console.log('discovered characteristics');
+                    const rxChar = chars.find(x => x.properties.includes('write'));
+                    if (rxChar !== undefined) {
+                        rxCharacteristic = rxChar;
+                        console.log('set rxCharacteristic');
+                    }
+                    else {
+                        console.log('rxCharacteristic was undefined... :(');
+                    }                    
+                });
             }
             else {
                 console.log('serv undefined...');
             }
         });
-    });
-
-    peripheral.once('disconnect', () => {
-        if (!manuallyDisconnected) {
-            console.log('disconnected...');
-        }
-    });
-};
-
-const handleCharacteristics = () => {
-    uartService.once('characteristicsDiscover', (chars) => {
-        console.log('discovered characteristics');
-        const rxChar = chars.find(x => x.properties.includes('write'));
-        if (rxChar !== undefined) {
-            rxCharacteristic = rxChar;
-            console.log('set rxCharacteristic');
-            const msg = convertStringToBuffer('test-channel');
-            rxChar.write(msg, withoutResponse);
-        }
-        else {
-            console.log('rxCharacteristic was undefined... :(');
-        }
-    });
-};
+    };
 
 client.on('message', message => {
     if (!message.content.startsWith(config.prefix)) {
         const role = message.member.roles.cache.find(r => r.name == 'Players');
-        if (role !== undefined || message.channel.name == 'test-channel') {
+        if (role !== undefined) {
             const msg = convertStringToBuffer(message.channel.name);
             rxCharacteristic.write(msg, withoutResponse);
             console.log(`Message sent in ${message.channel.name}. Wrote message to serialport.`);
@@ -102,18 +99,8 @@ client.on('message', message => {
     const logMessage = `Command Sent in #${message.channel.name}. ChannelId: ${channel.id}`;
     console.log(logMessage);
 
-    if (command === 'disconnect') {
-        peripheral.disconnect();
-    }
-
-    if (command === 'tryreconnect') {
-        if (peripheral !== undefined && peripheral !== null) {
-            peripheral.disconnect();
-        }
-        async () => {
-            // handle registered in the registerBLEHandlers should still work here?
-            await noble.startScanning([config.uuids.uart], false);
-        };
+    if (command === 'reset') {
+        noble.reset();
     }
 
     if (command === 'spoof') {
@@ -122,8 +109,16 @@ client.on('message', message => {
         }
         else {
             const channelname = args[0];
-            const setValue = config.channels.find(c => c.name == channelname).setVal;
-            sendSerialmessage(setValue, message);
+            const channel = config.channels.find(c => c.name == channelname);
+            if (channel == undefined) {
+                return message.channel.send('that channel is not spoofable.');
+            }
+            else {
+                if (channel.name == 'test-channel') {
+                    channel.setVal = 'test-channel';
+                }
+                sendSerialmessage(channel.setVal, message);
+            }
         }
     }
 
@@ -137,6 +132,7 @@ client.on('message', message => {
     }
 
     if (command === 'test-message') {
+        console.log('command: test-message')
         const result = isBLEValid();
         if (result !== true) {
             message.channel.send(result);

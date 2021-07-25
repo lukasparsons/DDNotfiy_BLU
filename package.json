@@ -24,11 +24,7 @@
     "@abandonware/noble": "^1.9.2-14",
     "discord.js": "^12.5.3",
     "dotenv": "^10.0.0",
-    "noble-uwp": "^0.6.2",
-    "noble-winrt": "^0.1.1",
-    "node-pre-gyp": "^0.17.0",
-    "serialport": "^9.2.0",
-    "ws": "^7.5.2"
+    "node-pre-gyp": "^0.17.0"
   },
   "devDependencies": {
     "eslint": "^7.30.0"
